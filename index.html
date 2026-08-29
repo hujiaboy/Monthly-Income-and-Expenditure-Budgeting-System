@@ -1,0 +1,1112 @@
+<!DOCTYPE html>
+<html lang="zh-HK" class="light">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>專業個人財務與收支預算管理系統</title>
+  
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: { brand: { 500: '#6366f1', 600: '#4f46e5' } }
+        }
+      }
+    };
+  </script>
+
+  <!-- FontAwesome 圖標庫 -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
+  <!-- Chart.js 圖表庫 -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <!-- SheetJS 豪華 Excel 匯出庫 -->
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+
+  <!-- Firebase SDK (Compat 模式) -->
+  <script src="https://www.gstatic.com/firebasejs/10.8.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.8.1/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.8.1/firebase-database-compat.js"></script>
+
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700;900&display=swap');
+    body { font-family: 'Noto Sans TC', sans-serif; transition: background-color 0.3s, color 0.3s; }
+  </style>
+</head>
+<body class="bg-slate-100 text-slate-800 dark:bg-slate-950 dark:text-slate-100 antialiased min-h-screen pb-20">
+
+  <!-- 頂部深藍導航欄 -->
+  <nav class="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white shadow-lg sticky top-0 z-40 border-b border-slate-800">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex justify-between items-center">
+      <div class="flex items-center space-x-3">
+        <div class="w-10 h-10 rounded-xl bg-amber-400 flex items-center justify-center shadow text-slate-950 font-black text-xl">
+          <i class="fa-solid fa-scale-balanced"></i>
+        </div>
+        <div>
+          <h1 class="text-base sm:text-lg font-black tracking-wide">智能收支與雙賬戶資產管理</h1>
+          <p class="text-xs text-slate-400">已打通 bills 資料庫 · 實時雙向同步 · 豪華 Excel 匯出</p>
+        </div>
+      </div>
+
+      <div class="flex items-center space-x-2 sm:space-x-3">
+        <button onclick="toggleDarkMode()" class="p-2.5 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-amber-400 transition border border-slate-700 shadow-sm" title="切換深色/淺色主題">
+          <i id="themeIcon" class="fa-solid fa-moon text-base"></i>
+        </button>
+
+        <div id="authSection" class="flex items-center">
+          <button id="btnLogin" onclick="loginWithGoogle()" class="bg-white text-slate-900 hover:bg-slate-100 font-bold px-3.5 py-2 rounded-xl text-xs sm:text-sm shadow flex items-center space-x-2 transition">
+            <i class="fa-brands fa-google text-red-500"></i>
+            <span>Google 登入</span>
+          </button>
+
+          <div id="userProfile" class="hidden flex items-center space-x-2 sm:space-x-3">
+            <img id="userAvatar" class="w-8 h-8 rounded-full border-2 border-amber-400 shadow" src="" alt="Avatar" />
+            <span id="userName" class="text-xs sm:text-sm font-semibold text-slate-200 hidden md:inline-block"></span>
+            <button onclick="logout()" class="text-xs bg-slate-800 hover:bg-red-600 text-slate-300 hover:text-white px-2.5 py-1.5 rounded-lg transition border border-slate-700">
+              登出
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </nav>
+
+  <!-- 未登入提示畫面 -->
+  <div id="loginPrompt" class="max-w-md mx-auto mt-20 p-8 text-center bg-white dark:bg-slate-900 rounded-3xl shadow-xl border border-slate-200 dark:border-slate-800">
+    <div class="w-16 h-16 bg-indigo-100 dark:bg-indigo-950 text-indigo-600 dark:text-indigo-400 rounded-2xl flex items-center justify-center mx-auto mb-4 text-2xl">
+      <i class="fa-solid fa-vault"></i>
+    </div>
+    <h2 class="text-xl font-bold mb-2">請先登入 Google 帳戶</h2>
+    <p class="text-sm text-slate-500 dark:text-slate-400 mb-6">登入後將連接既有的 bills 帳單資料庫，無縫同步所有歷史收支與營運紀錄。</p>
+    <button onclick="loginWithGoogle()" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-4 rounded-xl shadow flex items-center justify-center space-x-2 transition">
+      <i class="fa-brands fa-google"></i>
+      <span>使用 Google 快速登入</span>
+    </button>
+  </div>
+  <!-- 主操作介面 -->
+  <main id="appContent" class="hidden max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-6 space-y-6">
+
+    <!-- 頂部：雙賬戶真實資產看板 (含快速校準) -->
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <!-- 手頭現金 -->
+      <div class="bg-gradient-to-br from-amber-500 to-amber-600 text-white p-5 rounded-3xl shadow-md relative overflow-hidden">
+        <div class="flex justify-between items-center text-xs font-bold text-amber-100">
+          <span class="flex items-center gap-1.5"><i class="fa-solid fa-money-bill-wave"></i> 手頭現金資產 (Cash)</span>
+          <button onclick="openCalibrateModal('cash')" class="bg-white/20 hover:bg-white/30 px-2 py-1 rounded-lg text-xs backdrop-blur-sm transition flex items-center gap-1" title="校對實體銀包現金">
+            <i class="fa-solid fa-scale-balanced"></i> 盤點校對
+          </button>
+        </div>
+        <div class="text-3xl font-black mt-3 tracking-tight" id="accCashBalance">HK$ 0.0</div>
+        <p class="text-[11px] text-amber-100/80 mt-1">即時銀包實體結餘（支援零錢校對）</p>
+      </div>
+
+      <!-- 銀行存款 -->
+      <div class="bg-gradient-to-br from-blue-600 to-indigo-700 text-white p-5 rounded-3xl shadow-md relative overflow-hidden">
+        <div class="flex justify-between items-center text-xs font-bold text-blue-100">
+          <span class="flex items-center gap-1.5"><i class="fa-solid fa-building-columns"></i> 銀行戶口結餘 (Bank)</span>
+          <button onclick="openCalibrateModal('bank')" class="bg-white/20 hover:bg-white/30 px-2 py-1 rounded-lg text-xs backdrop-blur-sm transition flex items-center gap-1" title="校對銀行 App 真實存款">
+            <i class="fa-solid fa-scale-balanced"></i> 盤點校對
+          </button>
+        </div>
+        <div class="text-3xl font-black mt-3 tracking-tight" id="accBankBalance">HK$ 0.0</div>
+        <p class="text-[11px] text-blue-100/80 mt-1">戶口／轉數快／信用卡總存量</p>
+      </div>
+
+      <!-- 總流動淨資產 -->
+      <div class="bg-gradient-to-br from-emerald-600 to-teal-700 text-white p-5 rounded-3xl shadow-md relative overflow-hidden">
+        <div class="flex justify-between items-center text-xs font-bold text-emerald-100">
+          <span class="flex items-center gap-1.5"><i class="fa-solid fa-wallet"></i> 合計總流動資金</span>
+          <span class="p-1 rounded-lg bg-white/20 text-xs"><i class="fa-solid fa-shield-halved"></i></span>
+        </div>
+        <div class="text-3xl font-black mt-3 tracking-tight" id="accTotalBalance">HK$ 0.0</div>
+        <p class="text-[11px] text-emerald-100/80 mt-1">手頭現金 ＋ 銀行戶口總資金庫存</p>
+      </div>
+    </div>
+
+    <!-- 週期篩選、預算與功能按鈕 -->
+    <div class="bg-white dark:bg-slate-900 p-5 rounded-3xl shadow-sm border border-slate-200 dark:border-slate-800 space-y-4">
+      <div class="flex flex-wrap justify-between items-center gap-4">
+        
+        <!-- 基準月份與半月切換 -->
+        <div class="flex flex-wrap items-center gap-3">
+          <div class="flex items-center space-x-2">
+            <span class="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase">統計月份:</span>
+            <input type="month" id="selectedMonth" onchange="onMonthChange()" class="border border-slate-300 dark:border-slate-700 rounded-xl px-3 py-1.5 text-sm font-bold bg-white dark:bg-slate-800 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none" />
+          </div>
+
+          <div class="bg-slate-100 dark:bg-slate-800 p-1 rounded-xl flex items-center text-xs font-bold text-slate-600 dark:text-slate-300 space-x-1">
+            <button id="btnPeriod_all" onclick="setPeriodMode('all')" class="period-btn px-3 py-1.5 rounded-lg bg-indigo-600 text-white shadow-sm transition">成個月</button>
+            <button id="btnPeriod_h1" onclick="setPeriodMode('h1')" class="period-btn px-3 py-1.5 rounded-lg hover:text-indigo-600 dark:hover:text-indigo-400 transition">上半月 (1-15號)</button>
+            <button id="btnPeriod_h2" onclick="setPeriodMode('h2')" class="period-btn px-3 py-1.5 rounded-lg hover:text-indigo-600 dark:hover:text-indigo-400 transition">下半月 (16-月底)</button>
+            <button id="btnPeriod_custom" onclick="setPeriodMode('custom')" class="period-btn px-3 py-1.5 rounded-lg hover:text-indigo-600 dark:hover:text-indigo-400 transition">自訂區間</button>
+          </div>
+        </div>
+
+        <!-- 動作按鈕 -->
+        <div class="flex items-center flex-wrap gap-2">
+          <button onclick="openBudgetModal()" class="bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-bold px-3.5 py-2 rounded-xl text-xs sm:text-sm border border-slate-300 dark:border-slate-700 transition flex items-center gap-1.5">
+            <i class="fa-solid fa-sliders text-indigo-600 dark:text-indigo-400"></i> 設定預算
+          </button>
+          <button onclick="exportDeluxeExcel()" class="bg-teal-600 hover:bg-teal-700 text-white font-bold px-3.5 py-2 rounded-xl text-xs sm:text-sm shadow transition flex items-center gap-1.5">
+            <i class="fa-solid fa-file-excel"></i> 匯出豪華 Excel
+          </button>
+          <button onclick="openBackupModal()" class="bg-slate-700 hover:bg-slate-800 text-white font-bold px-3 py-2 rounded-xl text-xs sm:text-sm shadow transition flex items-center gap-1.5">
+            <i class="fa-solid fa-database"></i> 備份/還原
+          </button>
+        </div>
+      </div>
+
+      <!-- 自訂日期區間 -->
+      <div id="customDateRangeBox" class="hidden pt-3 border-t border-slate-100 dark:border-slate-800 flex flex-wrap items-center gap-3 text-xs font-semibold text-slate-600 dark:text-slate-400">
+        <span>自訂開始日期：</span>
+        <input type="date" id="customStartDate" onchange="renderDashboard()" class="border border-slate-300 dark:border-slate-700 rounded-lg px-2 py-1 bg-white dark:bg-slate-800 dark:text-white" />
+        <span>至 結束日期：</span>
+        <input type="date" id="customEndDate" onchange="renderDashboard()" class="border border-slate-300 dark:border-slate-700 rounded-lg px-2 py-1 bg-white dark:bg-slate-800 dark:text-white" />
+      </div>
+    </div>
+
+    <!-- 財務營運指標 (KPI) -->
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div class="bg-white dark:bg-slate-900 p-5 rounded-3xl shadow-sm border border-slate-200 dark:border-slate-800">
+        <div class="flex justify-between items-center text-xs font-bold text-slate-500 dark:text-slate-400">
+          <span>週期總收入 (含津貼)</span>
+          <span class="p-2 rounded-xl bg-emerald-100 dark:bg-emerald-950 text-emerald-600 dark:text-emerald-400"><i class="fa-solid fa-arrow-down-left"></i></span>
+        </div>
+        <div class="text-2xl font-black text-emerald-600 dark:text-emerald-400 mt-2" id="kpiIncome">HK$ 0.0</div>
+      </div>
+
+      <div class="bg-white dark:bg-slate-900 p-5 rounded-3xl shadow-sm border border-slate-200 dark:border-slate-800">
+        <div class="flex justify-between items-center text-xs font-bold text-slate-500 dark:text-slate-400">
+          <span>週期總支出</span>
+          <span class="p-2 rounded-xl bg-rose-100 dark:bg-rose-950 text-rose-600 dark:text-rose-400"><i class="fa-solid fa-arrow-up-right"></i></span>
+        </div>
+        <div class="text-2xl font-black text-rose-600 dark:text-rose-400 mt-2" id="kpiExpense">HK$ 0.0</div>
+      </div>
+
+      <div class="bg-white dark:bg-slate-900 p-5 rounded-3xl shadow-sm border border-slate-200 dark:border-slate-800">
+        <div class="flex justify-between items-center text-xs font-bold text-slate-500 dark:text-slate-400">
+          <span>週期淨利潤 / 儲蓄結餘</span>
+          <span class="p-2 rounded-xl bg-blue-100 dark:bg-blue-950 text-blue-600 dark:text-blue-400"><i class="fa-solid fa-scale-balanced"></i></span>
+        </div>
+        <div class="text-2xl font-black mt-2" id="kpiBalance">HK$ 0.0</div>
+      </div>
+
+      <div class="bg-white dark:bg-slate-900 p-5 rounded-3xl shadow-sm border border-slate-200 dark:border-slate-800">
+        <div class="flex justify-between items-center text-xs font-bold text-slate-500 dark:text-slate-400">
+          <span>預算執行率</span>
+          <span class="p-2 rounded-xl bg-amber-100 dark:bg-amber-950 text-amber-600 dark:text-amber-400"><i class="fa-solid fa-chart-pie"></i></span>
+        </div>
+        <div class="text-2xl font-black mt-2" id="kpiBudgetRate">0%</div>
+        <div class="w-full bg-slate-100 dark:bg-slate-800 rounded-full h-2 mt-2 overflow-hidden">
+          <div id="kpiBudgetBar" class="bg-indigo-600 h-2 rounded-full transition-all duration-500" style="width: 0%"></div>
+        </div>
+      </div>
+    </div>
+    <!-- 錄入表單與圖表分析 -->
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+      
+      <!-- 左側：收支錄入表單 + 常用快速範本 -->
+      <div class="lg:col-span-5 bg-white dark:bg-slate-900 p-6 rounded-3xl shadow-sm border border-slate-200 dark:border-slate-800 space-y-4">
+        
+        <!-- 常用範本膠囊欄 -->
+        <div>
+          <div class="flex justify-between items-center mb-2">
+            <span class="text-xs font-bold text-slate-500 dark:text-slate-400"><i class="fa-solid fa-bolt text-amber-500"></i> 常用快速範本（一鍵填表）:</span>
+          </div>
+          <div class="flex flex-wrap gap-1.5" id="presetsBar"></div>
+        </div>
+
+        <h3 class="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+          <i class="fa-solid fa-pen-to-square text-indigo-600 dark:text-indigo-400"></i> 新增流水帳
+        </h3>
+
+        <form id="recordForm" onsubmit="handleCreateRecord(event)" class="space-y-3 text-xs">
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="block font-bold text-slate-600 dark:text-slate-300 mb-1">收支類型</label>
+              <select id="recType" onchange="updateCategoryDropdown()" class="w-full border border-slate-300 dark:border-slate-700 rounded-xl px-3 py-2 font-bold bg-white dark:bg-slate-800 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none">
+                <option value="expense">支出 (-)</option>
+                <option value="income">收入 / 津貼 (+)</option>
+              </select>
+            </div>
+            <div>
+              <label class="block font-bold text-slate-600 dark:text-slate-300 mb-1">入帳賬戶</label>
+              <select id="recAccount" class="w-full border border-slate-300 dark:border-slate-700 rounded-xl px-3 py-2 font-bold bg-white dark:bg-slate-800 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none">
+                <option value="cash">手頭現金 (Cash)</option>
+                <option value="bank">銀行存款 (Bank)</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="block font-bold text-slate-600 dark:text-slate-300 mb-1">交易日期</label>
+              <input type="date" id="recDate" required class="w-full border border-slate-300 dark:border-slate-700 rounded-xl px-3 py-2 bg-white dark:bg-slate-800 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none" />
+            </div>
+            <div>
+              <label class="block font-bold text-slate-600 dark:text-slate-300 mb-1">分類項目</label>
+              <select id="recCategory" class="w-full border border-slate-300 dark:border-slate-700 rounded-xl px-3 py-2 font-bold bg-white dark:bg-slate-800 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none"></select>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="block font-bold text-slate-600 dark:text-slate-300 mb-1">金額 (HKD)</label>
+              <div class="relative">
+                <span class="absolute left-2.5 top-2 font-bold text-slate-400">HK$</span>
+                <input type="number" step="0.01" id="recAmount" required placeholder="0.00" class="w-full border border-slate-300 dark:border-slate-700 rounded-xl pl-9 pr-2 py-2 font-black bg-white dark:bg-slate-800 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none" />
+              </div>
+            </div>
+            <div>
+              <label class="block font-bold text-slate-600 dark:text-slate-300 mb-1">支付工具</label>
+              <select id="recPayment" class="w-full border border-slate-300 dark:border-slate-700 rounded-xl px-3 py-2 bg-white dark:bg-slate-800 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none">
+                <option value="現金">現金</option>
+                <option value="八達通">八達通</option>
+                <option value="轉數快 (FPS)">轉數快 (FPS)</option>
+                <option value="信用卡">信用卡</option>
+                <option value="銀行轉帳">銀行轉帳</option>
+                <option value="其他">其他</option>
+              </select>
+            </div>
+          </div>
+
+          <div>
+            <label class="block font-bold text-slate-600 dark:text-slate-300 mb-1">備註說明</label>
+            <input type="text" id="recNote" placeholder="例如：加德士入油、換計程油格、午餐、底薪發放..." class="w-full border border-slate-300 dark:border-slate-700 rounded-xl px-3 py-2 bg-white dark:bg-slate-800 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none" />
+          </div>
+
+          <button type="submit" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-xl shadow transition flex items-center justify-center gap-2 mt-2">
+            <i class="fa-solid fa-check"></i> 確認入帳並同步 bills 資料庫
+          </button>
+        </form>
+      </div>
+
+      <!-- 右側：支出結構圖表與分類預算進度 -->
+      <div class="lg:col-span-7 bg-white dark:bg-slate-900 p-6 rounded-3xl shadow-sm border border-slate-200 dark:border-slate-800 flex flex-col justify-between">
+        <div>
+          <h3 class="text-base font-bold text-slate-900 dark:text-white mb-4 flex items-center gap-2">
+            <i class="fa-solid fa-chart-pie text-indigo-600 dark:text-indigo-400"></i> 本週期支出結構分析
+          </h3>
+          <div class="h-52 relative flex items-center justify-center">
+            <canvas id="expenseChart"></canvas>
+          </div>
+        </div>
+
+        <div class="mt-4 pt-4 border-t border-slate-100 dark:border-slate-800">
+          <div class="text-xs font-bold text-slate-500 dark:text-slate-400 mb-2 uppercase tracking-wider">各分類預算上限執行狀況</div>
+          <div id="categoryBudgetList" class="space-y-2 max-h-36 overflow-y-auto pr-1"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 底部：明細記錄清單 (含搜尋與多條件篩選) -->
+    <div class="bg-white dark:bg-slate-900 rounded-3xl shadow-sm border border-slate-200 dark:border-slate-800 overflow-hidden space-y-3 p-5">
+      
+      <div class="flex flex-wrap justify-between items-center gap-3 border-b border-slate-100 dark:border-slate-800 pb-4">
+        <h3 class="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
+          <i class="fa-solid fa-list-check text-indigo-600 dark:text-indigo-400"></i> 收支流水明細 (雙系統即時共用)
+          <span class="text-xs font-bold bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 px-2.5 py-0.5 rounded-full" id="recordCount">0 筆</span>
+        </h3>
+
+        <!-- 搜尋與過濾條件工具欄 -->
+        <div class="flex flex-wrap items-center gap-2 w-full sm:w-auto text-xs">
+          <!-- 關鍵字搜尋 -->
+          <div class="relative flex-1 sm:w-44">
+            <i class="fa-solid fa-magnifying-glass absolute left-2.5 top-2.5 text-slate-400"></i>
+            <input type="text" id="filterKeyword" oninput="renderDashboard()" placeholder="搜尋備註/分類..." class="w-full border border-slate-300 dark:border-slate-700 rounded-xl pl-8 pr-2 py-1.5 bg-slate-50 dark:bg-slate-800 dark:text-white outline-none focus:ring-2 focus:ring-indigo-500" />
+          </div>
+
+          <!-- 賬戶過濾 -->
+          <select id="filterAccount" onchange="renderDashboard()" class="border border-slate-300 dark:border-slate-700 rounded-xl px-2.5 py-1.5 font-bold bg-slate-50 dark:bg-slate-800 dark:text-white outline-none">
+            <option value="all">全部賬戶</option>
+            <option value="cash">只睇現金</option>
+            <option value="bank">只睇銀行</option>
+          </select>
+
+          <!-- 類型過濾 -->
+          <select id="filterType" onchange="renderDashboard()" class="border border-slate-300 dark:border-slate-700 rounded-xl px-2.5 py-1.5 font-bold bg-slate-50 dark:bg-slate-800 dark:text-white outline-none">
+            <option value="all">全部類型</option>
+            <option value="expense">只睇支出</option>
+            <option value="income">只睇收入/津貼</option>
+            <option value="calibration">只睇資產校對</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- 表格清單 -->
+      <div class="overflow-x-auto">
+        <table class="w-full text-left text-xs">
+          <thead class="bg-slate-100/75 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-bold uppercase border-b border-slate-200 dark:border-slate-700">
+            <tr>
+              <th class="py-3 px-3">日期</th>
+              <th class="py-3 px-3">賬戶</th>
+              <th class="py-3 px-3">類型</th>
+              <th class="py-3 px-3">分類</th>
+              <th class="py-3 px-3">支付方式</th>
+              <th class="py-3 px-3">備註</th>
+              <th class="py-3 px-3 text-right">金額 (HKD)</th>
+              <th class="py-3 px-3 text-center">操作</th>
+            </tr>
+          </thead>
+          <tbody id="recordsTableBody" class="divide-y divide-slate-100 dark:divide-slate-800 font-medium"></tbody>
+        </table>
+      </div>
+    </div>
+  </main>
+
+  <!-- 彈窗 1：資產快速校對 (餘額盤點) -->
+  <div id="calibrateModal" class="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+    <div class="bg-white dark:bg-slate-900 rounded-3xl max-w-sm w-full p-6 shadow-2xl space-y-4 border border-slate-200 dark:border-slate-800">
+      <div class="flex justify-between items-center">
+        <h3 class="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
+          <i class="fa-solid fa-scale-balanced text-amber-500"></i> <span id="calibModalTitle">校對資產餘額</span>
+        </h3>
+        <button onclick="closeCalibrateModal()" class="text-slate-400 hover:text-slate-600"><i class="fa-solid fa-xmark text-lg"></i></button>
+      </div>
+
+      <p class="text-xs text-slate-500 dark:text-slate-400">直接輸入你銀包或銀行戶口現時實有的真實結餘，系統會自動在 bills 資料庫寫入一筆校準紀錄。</p>
+
+      <div class="space-y-3 text-xs">
+        <div class="bg-slate-50 dark:bg-slate-800 p-3 rounded-xl flex justify-between">
+          <span class="text-slate-500">目前系統記錄結餘:</span>
+          <span class="font-bold text-slate-800 dark:text-slate-200" id="calibCurrentSysBal">HK$ 0.0</span>
+        </div>
+
+        <div>
+          <label class="block font-bold text-slate-700 dark:text-slate-300 mb-1">真實手頭 / 銀行結餘 (HKD)</label>
+          <div class="relative">
+            <span class="absolute left-3 top-2 font-bold text-slate-400">HK$</span>
+            <input type="number" step="0.01" id="calibRealAmount" placeholder="0.00" class="w-full border border-slate-300 dark:border-slate-700 rounded-xl pl-10 pr-3 py-2 text-base font-black bg-white dark:bg-slate-800 dark:text-white focus:ring-2 focus:ring-amber-500 outline-none" />
+          </div>
+        </div>
+
+        <div>
+          <label class="block font-bold text-slate-700 dark:text-slate-300 mb-1">校對備註</label>
+          <input type="text" id="calibNote" value="資產定期盤點校對差額" class="w-full border border-slate-300 dark:border-slate-700 rounded-xl px-3 py-1.5 bg-white dark:bg-slate-800 dark:text-white outline-none" />
+        </div>
+      </div>
+
+      <div class="pt-3 border-t border-slate-100 dark:border-slate-800 flex justify-end space-x-2">
+        <button onclick="closeCalibrateModal()" class="px-4 py-2 text-xs font-bold text-slate-600 dark:text-slate-300">取消</button>
+        <button onclick="handleSaveCalibration()" class="px-4 py-2 text-xs font-bold bg-amber-500 hover:bg-amber-600 text-slate-950 rounded-xl shadow transition">確認校對</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 彈窗 2：設定各分類預算上限 -->
+  <div id="budgetModal" class="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+    <div class="bg-white dark:bg-slate-900 rounded-3xl max-w-md w-full p-6 shadow-2xl space-y-4 border border-slate-200 dark:border-slate-800">
+      <div class="flex justify-between items-center">
+        <h3 class="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
+          <i class="fa-solid fa-sliders text-indigo-600 dark:text-indigo-400"></i> 設定各生活開支月度預算
+        </h3>
+        <button onclick="closeBudgetModal()" class="text-slate-400 hover:text-slate-600"><i class="fa-solid fa-xmark text-lg"></i></button>
+      </div>
+
+      <p class="text-xs text-slate-500 dark:text-slate-400">為當月各項支出設定預算上限，超過將觸發紅色警戒。</p>
+      <form id="budgetSettingForm" class="space-y-2.5 max-h-72 overflow-y-auto pr-1"></form>
+
+      <div class="pt-3 border-t border-slate-100 dark:border-slate-800 flex justify-end space-x-2">
+        <button onclick="closeBudgetModal()" class="px-4 py-2 text-xs font-bold text-slate-600 dark:text-slate-300">關閉</button>
+        <button onclick="handleSaveBudgets()" class="px-4 py-2 text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl shadow transition">儲存預算設定</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 彈窗 3：JSON 數據備份與還原 -->
+  <div id="backupModal" class="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+    <div class="bg-white dark:bg-slate-900 rounded-3xl max-w-md w-full p-6 shadow-2xl space-y-4 border border-slate-200 dark:border-slate-800">
+      <div class="flex justify-between items-center">
+        <h3 class="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
+          <i class="fa-solid fa-database text-indigo-600"></i> 資料庫完整備份與還原
+        </h3>
+        <button onclick="closeBackupModal()" class="text-slate-400 hover:text-slate-600"><i class="fa-solid fa-xmark text-lg"></i></button>
+      </div>
+
+      <div class="space-y-4 text-xs">
+        <div class="p-3 bg-slate-50 dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700">
+          <h4 class="font-bold mb-1"><i class="fa-solid fa-download text-teal-500"></i> 下載完整 JSON 備份檔</h4>
+          <p class="text-slate-500 dark:text-slate-400 mb-2">將 bills 資料庫與預算設定完整打包儲存至本地硬碟。</p>
+          <button onclick="exportJSONBackup()" class="w-full bg-teal-600 hover:bg-teal-700 text-white font-bold py-2 rounded-xl transition">匯出 JSON 備份檔</button>
+        </div>
+
+        <div class="p-3 bg-slate-50 dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700">
+          <h4 class="font-bold mb-1"><i class="fa-solid fa-upload text-amber-500"></i> 還原 JSON 備份檔</h4>
+          <p class="text-slate-500 dark:text-slate-400 mb-2">選取過去下載的 .json 檔以還原資料庫（將覆蓋現有數據）。</p>
+          <input type="file" id="importJsonInput" accept=".json" class="w-full text-xs text-slate-500 file:mr-2 file:py-1.5 file:px-3 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100" />
+          <button onclick="importJSONBackup()" class="w-full mt-2 bg-slate-900 dark:bg-indigo-600 text-white font-bold py-2 rounded-xl transition">確認還原資料庫</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <!-- JavaScript 核心業務與資料庫邏輯 (上半部) -->
+  <script>
+    // 1. 深淺色模式管理
+    function initTheme() {
+      const savedTheme = localStorage.getItem('theme');
+      const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+      applyTheme(savedTheme === 'dark' || (!savedTheme && prefersDark));
+    }
+    function applyTheme(isDark) {
+      const html = document.documentElement;
+      const themeIcon = document.getElementById('themeIcon');
+      if (isDark) {
+        html.classList.add('dark');
+        themeIcon.className = 'fa-solid fa-sun text-amber-400 text-base';
+        localStorage.setItem('theme', 'dark');
+      } else {
+        html.classList.remove('dark');
+        themeIcon.className = 'fa-solid fa-moon text-slate-300 text-base';
+        localStorage.setItem('theme', 'light');
+      }
+      if (allBillsList && allBillsList.length > 0) renderDashboard();
+    }
+    function toggleDarkMode() {
+      applyTheme(!document.documentElement.classList.contains('dark'));
+    }
+
+    // 2. Firebase 共用配置 (完全打通 bills 資料庫)
+    const firebaseConfig = {
+      apiKey: "AIzaSyBFfgFYyh1AGvpBYHdRUtHsnBz6pawPZOI",
+      authDomain: "break-even-record-calculation.firebaseapp.com",
+      databaseURL: "https://break-even-record-calculation-default-rtdb.asia-southeast1.firebasedatabase.app",
+      projectId: "break-even-record-calculation",
+      storageBucket: "break-even-record-calculation.firebasestorage.app",
+      messagingSenderId: "963032266930",
+      appId: "1:963032266930:web:23f60bb6409e55f1e371ab",
+      measurementId: "G-0RH7CCVNB6"
+    };
+
+    if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
+    const auth = firebase.auth();
+    const db = firebase.database();
+
+    // 3. 雙系統完整分類合併清單 (完全相容舊檔案分類)
+    const CATEGORIES = {
+      income: [
+        "工資", "津貼", "主要底薪", "行車津貼", "燃油補貼", "隧道費津貼", 
+        "車輛維修津貼", "勤工獎金", "加班費", "兼職", "兼職收益", 
+        "銀行存款", "現金", "投資收益", "節日紅包/禮金", "長輩孝親", "其他收入"
+      ],
+      expense: [
+        "手機月費", "水費", "電費", "石油氣", "租金", "交通", "飲食", "購物", "雜項",
+        "車油開銷", "車輛保養/維修", "停車場月租/時租", "隧道費/過橋費", 
+        "牌費/保險/檢驗", "日常餐飲", "超市/家庭日用", "房屋租金/供樓", 
+        "水電煤/雜費", "電訊寬頻/手機費", "醫療健康/藥品", "娛樂/社交聚會", 
+        "個人服飾/購物", "子女/家庭開支", "保險供款", "其他雜支"
+      ]
+    };
+
+    // 常用快速範本
+    const DEFAULT_PRESETS = [
+      { label: "加德士入油", type: "expense", category: "交通", account: "cash", money: 400, payment: "現金", remark: "日常行車入油" },
+      { label: "停車場時租", type: "expense", category: "交通", account: "cash", money: 30, payment: "八達通", remark: "短暫泊車" },
+      { label: "行車津貼", type: "income", category: "津貼", account: "bank", money: 1500, payment: "銀行轉帳", remark: "本期津貼入帳" },
+      { label: "日常午餐", type: "expense", category: "飲食", account: "cash", money: 65, payment: "八達通", remark: "茶餐廳午餐" },
+      { label: "手機電話費", type: "expense", category: "手機月費", account: "bank", money: 168, payment: "轉數快 (FPS)", remark: "每月月費自動轉帳" }
+    ];
+
+    let currentUser = null;
+    let currentMonth = new Date().toISOString().slice(0, 7);
+    let periodMode = 'all';
+    let allBillsList = [];
+    let budgetsData = {};
+    let chartInstance = null;
+    let calibratingAccount = 'cash';
+
+    // 4. 頁面初始化
+    document.addEventListener("DOMContentLoaded", () => {
+      initTheme();
+      document.getElementById("selectedMonth").value = currentMonth;
+      document.getElementById("recDate").value = new Date().toISOString().slice(0, 10);
+      updateCategoryDropdown();
+      renderPresets();
+
+      auth.onAuthStateChanged((user) => {
+        if (user) {
+          currentUser = user;
+          document.getElementById("loginPrompt").classList.add("hidden");
+          document.getElementById("appContent").classList.remove("hidden");
+          document.getElementById("btnLogin").classList.add("hidden");
+          document.getElementById("userProfile").classList.remove("hidden");
+          document.getElementById("userAvatar").src = user.photoURL || "https://ui-avatars.com/api/?name=" + encodeURIComponent(user.displayName || 'User');
+          document.getElementById("userName").textContent = user.displayName || user.email;
+
+          listenToUserData();
+        } else {
+          currentUser = null;
+          document.getElementById("loginPrompt").classList.remove("hidden");
+          document.getElementById("appContent").classList.add("hidden");
+          document.getElementById("btnLogin").classList.remove("hidden");
+          document.getElementById("userProfile").classList.add("hidden");
+        }
+      });
+    });
+
+    function loginWithGoogle() {
+      const provider = new firebase.auth.GoogleAuthProvider();
+      auth.signInWithPopup(provider).catch(() => auth.signInWithRedirect(provider));
+    }
+    function logout() { auth.signOut(); }
+
+    function onMonthChange() {
+      currentMonth = document.getElementById("selectedMonth").value;
+      fetchMonthBudgets();
+    }
+
+    // 5. 資料庫即時監聽 (完全對齊舊系統路徑：bills/{uid})
+    function listenToUserData() {
+      if (!currentUser) return;
+      const uid = currentUser.uid;
+
+      db.ref(`bills/${uid}`).on('value', (snap) => {
+        const val = snap.val() || {};
+        allBillsList = Object.entries(val).map(([key, item]) => {
+          const money = parseFloat(item.money || item.amount || 0);
+          const day = item.day || item.date || "";
+          const remark = item.remark || item.note || "";
+          let account = item.account;
+          if (!account) {
+            if (item.category === "現金" || item.payment === "現金" || item.payment === "八達通") account = "cash";
+            else account = "bank";
+          }
+          return {
+            key,
+            ...item,
+            money,
+            day,
+            remark,
+            account
+          };
+        }).filter(r => r.day && r.type);
+
+        fetchMonthBudgets();
+      });
+    }
+
+    function fetchMonthBudgets() {
+      if (!currentUser) return;
+      db.ref(`budgets/${currentUser.uid}/${currentMonth}`).once('value', (bSnap) => {
+        budgetsData = bSnap.val() || {};
+        renderAssets();
+        renderDashboard();
+      });
+    }
+
+    // 6. 計算雙賬戶實體結餘 (智能整合全歷史 bills 數據)
+    function renderAssets() {
+      let cashTotal = 0;
+      let bankTotal = 0;
+
+      allBillsList.forEach(item => {
+        const amt = item.money;
+        const isCash = (item.account === 'cash');
+
+        if (item.type === 'income') {
+          if (isCash) cashTotal += amt; else bankTotal += amt;
+        } else if (item.type === 'expense') {
+          if (isCash) cashTotal -= amt; else bankTotal -= amt;
+        } else if (item.type === 'calibration') {
+          if (isCash) cashTotal += amt; else bankTotal += amt;
+        }
+      });
+
+      document.getElementById("accCashBalance").textContent = `HK$ ${cashTotal.toLocaleString('en-US', { minimumFractionDigits: 1 })}`;
+      document.getElementById("accBankBalance").textContent = `HK$ ${bankTotal.toLocaleString('en-US', { minimumFractionDigits: 1 })}`;
+      document.getElementById("accTotalBalance").textContent = `HK$ ${(cashTotal + bankTotal).toLocaleString('en-US', { minimumFractionDigits: 1 })}`;
+    }
+
+    function updateCategoryDropdown() {
+      const type = document.getElementById("recType").value;
+      const sel = document.getElementById("recCategory");
+      sel.innerHTML = "";
+      const list = CATEGORIES[type] || [];
+      list.forEach(c => {
+        const opt = document.createElement("option");
+        opt.value = c; opt.textContent = c;
+        sel.appendChild(opt);
+      });
+    }
+
+    function renderPresets() {
+      const bar = document.getElementById("presetsBar");
+      bar.innerHTML = "";
+      DEFAULT_PRESETS.forEach(p => {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "px-2.5 py-1 bg-slate-100 dark:bg-slate-800 hover:bg-indigo-50 dark:hover:bg-indigo-950 text-slate-700 dark:text-slate-300 hover:text-indigo-600 rounded-lg text-xs font-semibold border border-slate-200 dark:border-slate-700 transition";
+        btn.textContent = p.label;
+        btn.onclick = () => applyPreset(p);
+        bar.appendChild(btn);
+      });
+    }
+
+    function applyPreset(p) {
+      document.getElementById("recType").value = p.type;
+      updateCategoryDropdown();
+      document.getElementById("recCategory").value = p.category;
+      document.getElementById("recAccount").value = p.account;
+      document.getElementById("recAmount").value = p.money;
+      document.getElementById("recPayment").value = p.payment || "現金";
+      document.getElementById("recNote").value = p.remark;
+    }
+
+    function setPeriodMode(mode) {
+      periodMode = mode;
+      document.querySelectorAll(".period-btn").forEach(btn => {
+        btn.classList.remove("bg-indigo-600", "text-white", "shadow-sm");
+        btn.classList.add("hover:text-indigo-600", "dark:hover:text-indigo-400");
+      });
+      const activeBtn = document.getElementById(`btnPeriod_${mode}`);
+      if (activeBtn) {
+        activeBtn.classList.add("bg-indigo-600", "text-white", "shadow-sm");
+        activeBtn.classList.remove("hover:text-indigo-600", "dark:hover:text-indigo-400");
+      }
+      const customBox = document.getElementById("customDateRangeBox");
+      if (mode === 'custom') {
+        customBox.classList.remove("hidden");
+        document.getElementById("customStartDate").value = `${currentMonth}-01`;
+        document.getElementById("customEndDate").value = `${currentMonth}-15`;
+      } else {
+        customBox.classList.add("hidden");
+      }
+      renderDashboard();
+    }
+
+    // 7. 過濾與搜尋
+    function getFilteredRecords() {
+      const kw = document.getElementById("filterKeyword").value.trim().toLowerCase();
+      const filterAcc = document.getElementById("filterAccount").value;
+      const filterTyp = document.getElementById("filterType").value;
+
+      return allBillsList.filter(item => {
+        if (!item.day.startsWith(currentMonth)) return false;
+        const dayNum = parseInt(item.day.split("-")[2], 10);
+
+        if (periodMode === 'h1' && !(dayNum >= 1 && dayNum <= 15)) return false;
+        if (periodMode === 'h2' && !(dayNum >= 16 && dayNum <= 31)) return false;
+        if (periodMode === 'custom') {
+          const s = document.getElementById("customStartDate").value;
+          const e = document.getElementById("customEndDate").value;
+          if (s && item.day < s) return false;
+          if (e && item.day > e) return false;
+        }
+
+        if (filterAcc !== 'all' && item.account !== filterAcc) return false;
+        if (filterTyp !== 'all' && item.type !== filterTyp) return false;
+
+        if (kw) {
+          const str = `${item.category} ${item.remark} ${item.payment || ''}`.toLowerCase();
+          if (!str.includes(kw)) return false;
+        }
+
+        return true;
+      }).sort((a, b) => new Date(b.day) - new Date(a.day));
+    }
+
+    // 8. 儲存收支紀錄 (雙向兼容格式寫入 bills/{uid})
+    function handleCreateRecord(e) {
+      e.preventDefault();
+      if (!currentUser) return;
+
+      const type = document.getElementById("recType").value;
+      const account = document.getElementById("recAccount").value;
+      const day = document.getElementById("recDate").value;
+      const category = document.getElementById("recCategory").value;
+      const money = parseFloat(document.getElementById("recAmount").value);
+      const payment = document.getElementById("recPayment").value;
+      const remark = document.getElementById("recNote").value.trim();
+
+      if (isNaN(money) || money <= 0) return alert("請輸入正確金額！");
+
+      const payload = {
+        type,
+        category,
+        money,
+        day,
+        remark,
+        account,
+        payment,
+        timestamp: new Date().getTime()
+      };
+
+      db.ref(`bills/${currentUser.uid}`).push(payload, (err) => {
+        if (!err) {
+          document.getElementById("recAmount").value = "";
+          document.getElementById("recNote").value = "";
+        } else {
+          alert("儲存失敗: " + err.message);
+        }
+      });
+    }
+
+    function deleteRecord(key) {
+      if (!confirm("確定要刪除這筆紀錄嗎？動作將即時同步至舊系統。")) return;
+      db.ref(`bills/${currentUser.uid}/${key}`).remove();
+    }
+
+    // 9. 資產盤點校準操作
+    function openCalibrateModal(acc) {
+      calibratingAccount = acc;
+      const isCash = (acc === 'cash');
+      document.getElementById("calibModalTitle").textContent = isCash ? "校對【手頭現金】餘額" : "校對【銀行存款】餘額";
+      
+      let sysBal = 0;
+      allBillsList.forEach(item => {
+        if (item.account === acc) {
+          const amt = item.money;
+          if (item.type === 'income' || item.type === 'calibration') sysBal += amt;
+          else if (item.type === 'expense') sysBal -= amt;
+        }
+      });
+
+      document.getElementById("calibCurrentSysBal").textContent = `HK$ ${sysBal.toLocaleString('en-US', { minimumFractionDigits: 1 })}`;
+      document.getElementById("calibRealAmount").value = "";
+      document.getElementById("calibrateModal").classList.remove("hidden");
+    }
+
+    function closeCalibrateModal() {
+      document.getElementById("calibrateModal").classList.add("hidden");
+    }
+
+    function handleSaveCalibration() {
+      const realAmt = parseFloat(document.getElementById("calibRealAmount").value);
+      if (isNaN(realAmt)) return alert("請填寫真實盤點金額！");
+
+      let sysBal = 0;
+      allBillsList.forEach(item => {
+        if (item.account === calibratingAccount) {
+          const amt = item.money;
+          if (item.type === 'income' || item.type === 'calibration') sysBal += amt;
+          else if (item.type === 'expense') sysBal -= amt;
+        }
+      });
+
+      const diff = realAmt - sysBal;
+      if (Math.abs(diff) < 0.01) {
+        alert("金額與系統相符，無須產生差額調整！");
+        return closeCalibrateModal();
+      }
+
+      const today = new Date().toISOString().slice(0, 10);
+      const note = document.getElementById("calibNote").value.trim() || "資產盤點校對差額";
+
+      const calibPayload = {
+        type: 'calibration',
+        category: "資產校準調整",
+        money: diff,
+        day: today,
+        remark: `${note} (系統原值: $${sysBal.toFixed(1)} -> 校準為: $${realAmt.toFixed(1)})`,
+        account: calibratingAccount,
+        payment: calibratingAccount === 'cash' ? "現金校對" : "銀行對帳",
+        timestamp: new Date().getTime()
+      };
+
+      db.ref(`bills/${currentUser.uid}`).push(calibPayload, (err) => {
+        if (!err) {
+          closeCalibrateModal();
+        } else {
+          alert("校準失敗: " + err.message);
+        }
+      });
+    }
+    // 10. 渲染儀表板、明細與圖表
+    function renderDashboard() {
+      const items = getFilteredRecords();
+      let totalIncome = 0;
+      let totalExpense = 0;
+      const expenseByCategory = {};
+
+      items.forEach(item => {
+        if (item.type === 'income') {
+          totalIncome += item.money;
+        } else if (item.type === 'expense') {
+          totalExpense += item.money;
+          expenseByCategory[item.category] = (expenseByCategory[item.category] || 0) + item.money;
+        }
+      });
+
+      const balance = totalIncome - totalExpense;
+      let totalBudget = 0;
+      Object.values(budgetsData).forEach(b => totalBudget += (b || 0));
+      if (periodMode === 'h1' || periodMode === 'h2') totalBudget = totalBudget / 2;
+
+      document.getElementById("kpiIncome").textContent = `HK$ ${totalIncome.toLocaleString('en-US', { minimumFractionDigits: 1 })}`;
+      document.getElementById("kpiExpense").textContent = `HK$ ${totalExpense.toLocaleString('en-US', { minimumFractionDigits: 1 })}`;
+      
+      const elBal = document.getElementById("kpiBalance");
+      elBal.textContent = `HK$ ${balance.toLocaleString('en-US', { minimumFractionDigits: 1 })}`;
+      elBal.className = `text-2xl font-black mt-2 ${balance >= 0 ? 'text-slate-800 dark:text-white' : 'text-rose-600 dark:text-rose-400'}`;
+
+      const budgetRate = totalBudget > 0 ? Math.round((totalExpense / totalBudget) * 100) : 0;
+      document.getElementById("kpiBudgetRate").textContent = `${budgetRate}% (預算: $${totalBudget.toLocaleString()})`;
+      const bar = document.getElementById("kpiBudgetBar");
+      bar.style.width = `${Math.min(budgetRate, 100)}%`;
+      bar.className = `h-2 rounded-full transition-all duration-500 ${budgetRate > 100 ? 'bg-rose-500' : (budgetRate > 80 ? 'bg-amber-500' : 'bg-indigo-600')}`;
+
+      renderTable(items);
+      renderCategoryBudgets(expenseByCategory);
+      renderChart(expenseByCategory);
+    }
+
+    function renderTable(items) {
+      const tbody = document.getElementById("recordsTableBody");
+      document.getElementById("recordCount").textContent = `${items.length} 筆`;
+      tbody.innerHTML = "";
+
+      if (items.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="8" class="py-8 text-center text-slate-400 font-normal">無符合條件的收支紀錄</td></tr>`;
+        return;
+      }
+
+      items.forEach(item => {
+        const isExp = (item.type === 'expense');
+        const isCalib = (item.type === 'calibration');
+        const tr = document.createElement("tr");
+        tr.className = "hover:bg-slate-50 dark:hover:bg-slate-800/50 transition";
+
+        let typeBadge = '';
+        let amountDisplay = '';
+
+        if (isCalib) {
+          typeBadge = `<span class="px-2 py-0.5 rounded-full font-bold bg-amber-100 dark:bg-amber-950 text-amber-700 dark:text-amber-400">校對調帳</span>`;
+          amountDisplay = `<span class="font-mono font-black ${item.money >= 0 ? 'text-emerald-600' : 'text-rose-600'}">${item.money >= 0 ? '+' : ''}HK$ ${item.money.toLocaleString('en-US', { minimumFractionDigits: 1 })}</span>`;
+        } else if (isExp) {
+          typeBadge = `<span class="px-2 py-0.5 rounded-full font-bold bg-rose-100 dark:bg-rose-950 text-rose-700 dark:text-rose-400">支出</span>`;
+          amountDisplay = `<span class="font-mono font-black text-rose-600 dark:text-rose-400">-HK$ ${item.money.toLocaleString('en-US', { minimumFractionDigits: 1 })}</span>`;
+        } else {
+          typeBadge = `<span class="px-2 py-0.5 rounded-full font-bold bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-400">收入/津貼</span>`;
+          amountDisplay = `<span class="font-mono font-black text-emerald-600 dark:text-emerald-400">+HK$ ${item.money.toLocaleString('en-US', { minimumFractionDigits: 1 })}</span>`;
+        }
+
+        const accBadge = item.account === 'cash'
+          ? `<span class="text-amber-600 dark:text-amber-400 font-bold"><i class="fa-solid fa-money-bill-wave"></i> 現金</span>`
+          : `<span class="text-blue-600 dark:text-blue-400 font-bold"><i class="fa-solid fa-building-columns"></i> 銀行</span>`;
+
+        tr.innerHTML = `
+          <td class="py-3 px-3 font-mono text-slate-500 dark:text-slate-400">${item.day}</td>
+          <td class="py-3 px-3">${accBadge}</td>
+          <td class="py-3 px-3">${typeBadge}</td>
+          <td class="py-3 px-3 font-bold text-slate-800 dark:text-slate-200">${item.category}</td>
+          <td class="py-3 px-3 text-slate-500 dark:text-slate-400">${item.payment || '-'}</td>
+          <td class="py-3 px-3 text-slate-600 dark:text-slate-300 truncate max-w-xs">${item.remark || '-'}</td>
+          <td class="py-3 px-3 text-right">${amountDisplay}</td>
+          <td class="py-3 px-3 text-center">
+            <button onclick="deleteRecord('${item.key}')" class="text-slate-400 hover:text-rose-600 transition">
+              <i class="fa-solid fa-trash-can"></i>
+            </button>
+          </td>
+        `;
+        tbody.appendChild(tr);
+      });
+    }
+
+    function renderCategoryBudgets(expenseByCategory) {
+      const container = document.getElementById("categoryBudgetList");
+      container.innerHTML = "";
+
+      Object.keys(expenseByCategory).forEach(cat => {
+        const spent = expenseByCategory[cat] || 0;
+        let budget = budgetsData[cat] || 0;
+        if (periodMode === 'h1' || periodMode === 'h2') budget = budget / 2;
+
+        if (budget > 0 || spent > 0) {
+          const pct = budget > 0 ? Math.round((spent / budget) * 100) : 100;
+          const isOver = budget > 0 && spent > budget;
+          const div = document.createElement("div");
+          div.className = "text-xs";
+          div.innerHTML = `
+            <div class="flex justify-between items-center mb-1">
+              <span class="font-bold text-slate-700 dark:text-slate-300">${cat}</span>
+              <span class="${isOver ? 'text-rose-600 font-bold' : 'text-slate-500'}">
+                $${spent.toLocaleString()} / $${budget.toLocaleString()} (${pct}%)
+              </span>
+            </div>
+            <div class="w-full bg-slate-100 dark:bg-slate-800 rounded-full h-1.5 overflow-hidden">
+              <div class="h-1.5 rounded-full ${isOver ? 'bg-rose-500' : 'bg-indigo-500'}" style="width: ${Math.min(pct, 100)}%"></div>
+            </div>
+          `;
+          container.appendChild(div);
+        }
+      });
+    }
+
+    function renderChart(expenseByCategory) {
+      const ctx = document.getElementById("expenseChart").getContext("2d");
+      const labels = Object.keys(expenseByCategory).filter(k => expenseByCategory[k] > 0);
+      const data = labels.map(k => expenseByCategory[k]);
+
+      if (chartInstance) chartInstance.destroy();
+      if (data.length === 0) return;
+
+      const isDark = document.documentElement.classList.contains('dark');
+      chartInstance = new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+          labels: labels,
+          datasets: [{
+            data: data,
+            backgroundColor: ['#6366f1', '#ec4899', '#f59e0b', '#10b981', '#3b82f6', '#8b5cf6', '#14b8a6', '#f43f5e', '#64748b', '#06b6d4', '#84cc16'],
+            borderWidth: 2,
+            borderColor: isDark ? '#0f172a' : '#ffffff'
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { position: 'right', labels: { color: isDark ? '#cbd5e1' : '#475569', font: { family: 'Noto Sans TC', size: 10 } } }
+          }
+        }
+      });
+    }
+
+    // 11. 預算設定彈窗管理
+    function openBudgetModal() {
+      const form = document.getElementById("budgetSettingForm");
+      form.innerHTML = "";
+      CATEGORIES.expense.forEach(cat => {
+        const val = budgetsData[cat] || "";
+        const row = document.createElement("div");
+        row.className = "flex items-center justify-between gap-3";
+        row.innerHTML = `
+          <label class="text-xs font-bold text-slate-700 dark:text-slate-300 w-36 truncate">${cat}</label>
+          <div class="relative flex-1">
+            <span class="absolute left-2.5 top-1.5 text-xs text-slate-400">HK$</span>
+            <input type="number" step="50" name="${cat}" value="${val}" placeholder="0" class="w-full border border-slate-300 dark:border-slate-700 rounded-lg pl-9 pr-2 py-1 text-xs font-bold bg-white dark:bg-slate-800 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none" />
+          </div>
+        `;
+        form.appendChild(row);
+      });
+      document.getElementById("budgetModal").classList.remove("hidden");
+    }
+    function closeBudgetModal() { document.getElementById("budgetModal").classList.add("hidden"); }
+
+    function handleSaveBudgets() {
+      const formData = new FormData(document.getElementById("budgetSettingForm"));
+      const newBudgets = {};
+      formData.forEach((value, key) => {
+        const num = parseFloat(value);
+        if (!isNaN(num) && num >= 0) newBudgets[key] = num;
+      });
+      db.ref(`budgets/${currentUser.uid}/${currentMonth}`).set(newBudgets, (err) => {
+        if (!err) closeBudgetModal(); else alert("預算儲存失敗: " + err.message);
+      });
+    }
+
+    // 12. 豪華 Excel 匯出 (雙工作表)
+    function exportDeluxeExcel() {
+      const items = getFilteredRecords();
+      if (items.length === 0) return alert("當前週期暫無交易紀錄可匯出！");
+
+      let pLabel = `${currentMonth}_全月`;
+      if (periodMode === 'h1') pLabel = `${currentMonth}_上半月`;
+      if (periodMode === 'h2') pLabel = `${currentMonth}_下半月`;
+
+      const detailRows = [["交易日期", "入帳賬戶", "收支類型", "分類項目", "支付工具", "金額 (HKD)", "備註說明"]];
+      let sumInc = 0, sumExp = 0;
+      const expSum = {};
+
+      items.forEach(item => {
+        const isExp = (item.type === 'expense');
+        const isCalib = (item.type === 'calibration');
+        if (isExp) {
+          sumExp += item.money;
+          expSum[item.category] = (expSum[item.category] || 0) + item.money;
+        } else if (item.type === 'income') {
+          sumInc += item.money;
+        }
+        detailRows.push([
+          item.day,
+          item.account === 'cash' ? "現金" : "銀行",
+          isCalib ? "校對調帳" : (isExp ? "支出" : "收入/津貼"),
+          item.category,
+          item.payment || "",
+          item.money,
+          item.remark || ""
+        ]);
+      });
+
+      const summaryRows = [
+        ["【 個人財務收支與預算分析總表 】"],
+        ["統計週期", pLabel],
+        ["製表時間", new Date().toLocaleString()],
+        [],
+        ["核心指標項目", "金額 (HKD)"],
+        ["總收入 (含各項津貼)", sumInc],
+        ["總支出", sumExp],
+        ["週期淨盈餘 / 儲蓄", sumInc - sumExp],
+        [],
+        ["【 開支分類與預算對比清單 】"],
+        ["分類名稱", "設定預算 (HKD)", "實際支出 (HKD)", "預算差額 (HKD)", "執行率 (%)"]
+      ];
+
+      let totBgt = 0;
+      Object.keys(expSum).forEach(c => {
+        let b = budgetsData[c] || 0;
+        if (periodMode === 'h1' || periodMode === 'h2') b = b / 2;
+        const actual = expSum[c] || 0;
+        totBgt += b;
+        summaryRows.push([c, b, actual, b - actual, b > 0 ? ((actual / b) * 100).toFixed(1) + "%" : "-"]);
+      });
+
+      const wb = XLSX.utils.book_new();
+      const wsSum = XLSX.utils.aoa_to_sheet(summaryRows);
+      const wsDet = XLSX.utils.aoa_to_sheet(detailRows);
+
+      wsSum['!cols'] = [{ wch: 18 }, { wch: 16 }, { wch: 16 }, { wch: 16 }, { wch: 14 }];
+      wsDet['!cols'] = [{ wch: 14 }, { wch: 10 }, { wch: 12 }, { wch: 16 }, { wch: 14 }, { wch: 14 }, { wch: 28 }];
+
+      XLSX.utils.book_append_sheet(wb, wsSum, "財務總結與預算對比");
+      XLSX.utils.book_append_sheet(wb, wsDet, "收支流水明細表");
+      XLSX.writeFile(wb, `${pLabel}_個人財務收支表.xlsx`);
+    }
+
+    // 13. JSON 資料庫全量備份與還原
+    function openBackupModal() { document.getElementById("backupModal").classList.remove("hidden"); }
+    function closeBackupModal() { document.getElementById("backupModal").classList.add("hidden"); }
+
+    function exportJSONBackup() {
+      if (!currentUser) return;
+      db.ref(`bills/${currentUser.uid}`).once('value', (snap) => {
+        const data = snap.val() || {};
+        const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        a.download = `bills_backup_${new Date().toISOString().slice(0, 10)}.json`;
+        a.click();
+      });
+    }
+
+    function importJSONBackup() {
+      if (!currentUser) return;
+      const fileInput = document.getElementById("importJsonInput");
+      if (!fileInput.files.length) return alert("請選擇 JSON 備份檔案！");
+
+      const file = fileInput.files[0];
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        try {
+          const parsed = JSON.parse(e.target.result);
+          if (confirm("還原將完全覆蓋現有的 bills 資料庫，確定繼續嗎？")) {
+            db.ref(`bills/${currentUser.uid}`).set(parsed, (err) => {
+              if (!err) {
+                alert("資料庫還原成功！");
+                closeBackupModal();
+              } else {
+                alert("還原失敗: " + err.message);
+              }
+            });
+          }
+        } catch (err) {
+          alert("JSON 解析失敗，請確認檔案格式正確。");
+        }
+      };
+      reader.readAsText(file);
+    }
+  </script>
+</body>
+</html>
+
